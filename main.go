@@ -68,16 +68,20 @@ func NewGame(romPath string) (*Game, error) {
 func (g *Game) Update() error {
 	g.Input.Update()
 
+	// Set VBlank at frame start so the CPU can detect it.
+	// The NES generates VBlank during scanlines 241-261 (~20 scanlines).
+	g.PPU.Status |= 0x80
+
+	// Trigger NMI if VBlank + NMI output enabled (PPUCTRL bit 7)
+	if g.PPU.Ctrl&0x80 != 0 {
+		g.CPU.NMI = true
+	}
+
 	// Run CPU for one frame worth of cycles
 	g.CPU.RunCycles(g.CPU.Cycles + cyclesPerFrame)
 
-	// Render the frame and set VBlank
+	// Render the frame using current PPU state
 	g.PPU.RenderFrame()
-
-	// Generate NMI at end of frame if VBlank NMI is enabled
-	if g.PPU.Status&0x80 != 0 && g.PPU.Ctrl&0x80 != 0 {
-		g.CPU.NMI = true
-	}
 
 	// Audio: generate samples (playback skipped for now)
 	_ = g.APU.GenerateSamples()

@@ -937,7 +937,7 @@ func (c *CPU) execute(opcode uint8) int {
 		c.setZN(c.Y)
 		return 2
 
-	// ===== INC / DEC zero page =====
+	// ===== INC / DEC =====
 	case 0xE6: // INC zp
 		c.PC++
 		addr := c.zp()
@@ -945,6 +945,28 @@ func (c *CPU) execute(opcode uint8) int {
 		c.Bus.Write(addr, v)
 		c.setZN(v)
 		return 5
+	case 0xF6: // INC zp,X
+		c.PC++
+		addr := c.zpX()
+		v := c.Bus.Read(addr) + 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 6
+	case 0xEE: // INC abs
+		c.PC++
+		addr := c.abs()
+		v := c.Bus.Read(addr) + 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 6
+	case 0xFE: // INC abs,X
+		c.PC++
+		var _cross bool
+		addr := c.absX(&_cross)
+		v := c.Bus.Read(addr) + 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 7
 	case 0xC6: // DEC zp
 		c.PC++
 		addr := c.zp()
@@ -952,6 +974,28 @@ func (c *CPU) execute(opcode uint8) int {
 		c.Bus.Write(addr, v)
 		c.setZN(v)
 		return 5
+	case 0xD6: // DEC zp,X
+		c.PC++
+		addr := c.zpX()
+		v := c.Bus.Read(addr) - 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 6
+	case 0xCE: // DEC abs
+		c.PC++
+		addr := c.abs()
+		v := c.Bus.Read(addr) - 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 6
+	case 0xDE: // DEC abs,X
+		c.PC++
+		var _cross bool
+		addr := c.absX(&_cross)
+		v := c.Bus.Read(addr) - 1
+		c.Bus.Write(addr, v)
+		c.setZN(v)
+		return 7
 
 	// ===== Flag instructions =====
 	case 0x18: // CLC - Clear Carry
