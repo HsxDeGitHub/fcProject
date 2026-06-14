@@ -5,6 +5,17 @@ type CartridgeInterface interface {
 	CHRWrite(addr uint16, data uint8)
 }
 
+var NESPalette = [64]uint32{
+	0x7C7C7C, 0x0000FC, 0x0000BC, 0x4428BC, 0x940084, 0xA80020, 0xA81000, 0x881400,
+	0x503000, 0x007800, 0x006800, 0x005800, 0x004058, 0x000000, 0x000000, 0x000000,
+	0xBCBCBC, 0x0078F8, 0x0058F8, 0x6844FC, 0xD800CC, 0xE40058, 0xF83800, 0xE45C10,
+	0xAC7C00, 0x00B800, 0x00A800, 0x00A844, 0x008888, 0x000000, 0x000000, 0x000000,
+	0xF8F8F8, 0x3CBCFC, 0x6888FC, 0x9878F8, 0xF878F8, 0xF85898, 0xF87858, 0xFCA044,
+	0xF8B800, 0xB8F818, 0x58D854, 0x58F898, 0x00E8D8, 0x787878, 0x000000, 0x000000,
+	0xFCFCFC, 0xA4E4FC, 0xB8B8F8, 0xD8B8F8, 0xF8B8F8, 0xF8A4C0, 0xF0D0B0, 0xFCE0A8,
+	0xF8D878, 0xD8F878, 0xB8F8B8, 0xB8F8D8, 0x00FCFC, 0xF8D8F8, 0x000000, 0x000000,
+}
+
 const (
 	ScreenWidth  = 256
 	ScreenHeight = 240
@@ -143,6 +154,198 @@ func (p *PPU) paletteIndex(addr uint16) uint8 {
 	return idx
 }
 
+func (p *PPU) paletteColor(idx uint8) (r, g, b, a uint8) {
+	c := NESPalette[idx&0x3F]
+	return uint8((c >> 16) & 0xFF), uint8((c >> 8) & 0xFF), uint8(c & 0xFF), 255
+}
+
+func (p *PPU) readVRAM(addr uint16) uint8 {
+	addr &= 0x3FFF
+	switch {
+	case addr < 0x2000:
+		return p.Cart.CHRRead(addr)
+	case addr < 0x3F00:
+		return p.VRAM[p.mirrorNameTable(addr)&0x0FFF]
+	default:
+		idx := p.paletteIndex(addr)
+		return p.Palette[idx]
+	}
+}
+
+func (p *PPU) readCHR(addr uint16) uint8 {
+	return p.Cart.CHRRead(addr & 0x1FFF)
+}
+
+func (p *PPU) mirrorNameTable(addr uint16) uint16 {
+	addr = addr & 0x2FFF
+	table := (addr - 0x2000) / 0x400
+	switch {
+	case p.Ctrl&0x01 != 0: // Vertical mirroring
+		switch table {
+		case 0, 1:
+			return addr
+		case 2:
+			return addr - 0x800
+		case 3:
+			return addr - 0x800
+		}
+	default: // Horizontal mirroring
+		switch table {
+		case 0:
+			return addr
+		case 1:
+			return addr - 0x400
+		case 2:
+			return addr
+		case 3:
+			return addr - 0x400
+		}
+	}
+	return addr
+}
+
 func (p *PPU) RenderFrame() []byte {
+	for i := range p.Frame {
+		p.Frame[i] = 0
+	}
+	p.Status |= 0x80 // Set VBlank
+
+	if p.Mask&0x08 != 0 {
+		p.renderBackground()
+	}
+	if p.Mask&0x10 != 0 {
+		p.renderSprites()
+	}
+
 	return p.Frame[:]
+}
+
+func (p *PPU) renderBackground() {
+	baseNT := 0x2000 + uint16(p.Ctrl&0x03)*0x400
+	basePT := uint16(0)
+	if p.Ctrl&0x10 != 0 {
+		basePT = 0x1000
+	}
+
+	for y := 0; y < 240; y++ {
+		realY := (y + int(p.ScrollY)) % 240
+		tileY := realY / 8
+		for x := 0; x < 256; x++ {
+			realX := (x + int(p.ScrollX)) % 256
+			tileX := realX / 8
+
+			ntAddr := baseNT + uint16(tileY)*32 + uint16(tileX)
+			tileIdx := p.readVRAM(ntAddr)
+
+			attrAddr := baseNT + 0x3C0 + uint16(tileY/4)*8 + uint16(tileX/4)
+			attr := p.readVRAM(attrAddr)
+			shift := ((tileY & 2) << 1) | (tileX & 2)
+			paletteGroup := (attr >> shift) & 0x03
+
+			pixelX := realX & 7
+			pixelY := realY & 7
+			ptAddr := basePT + uint16(tileIdx)*16 + uint16(pixelY)
+
+			lo := p.readCHR(ptAddr)
+			hi := p.readCHR(ptAddr + 8)
+			bit := 7 - pixelX
+			colorIdx := ((hi>>bit)&1)<<1 | ((lo>>bit)&1)
+
+			if colorIdx == 0 {
+				colorIdx = p.Palette[0] & 0x3F
+			} else {
+				palAddr := 0x3F00 + uint16(paletteGroup)*4 + uint16(colorIdx)
+				colorIdx = p.readVRAM(palAddr) & 0x3F
+			}
+
+			r, g, b, a := p.paletteColor(colorIdx)
+			offset := (y*256 + x) * 4
+			p.Frame[offset] = r
+			p.Frame[offset+1] = g
+			p.Frame[offset+2] = b
+			p.Frame[offset+3] = a
+		}
+	}
+}
+
+func (p *PPU) renderSprites() {
+	spriteHeight := 8
+	if p.Ctrl&0x20 != 0 {
+		spriteHeight = 16
+	}
+
+	for i := 63; i >= 0; i-- {
+		spriteY := int(p.OAM[i*4])
+		tileIdx := p.OAM[i*4+1]
+		attr := p.OAM[i*4+2]
+		spriteX := int(p.OAM[i*4+3])
+
+		spriteY = spriteY + 1 // NES: sprites rendered one line lower
+
+		if spriteY > 240 || spriteX > 248 {
+			continue
+		}
+
+		flipV := (attr & 0x80) != 0
+		flipH := (attr & 0x40) != 0
+		paletteGroup := (attr & 0x03) + 4
+
+		basePT := uint16(0)
+		if p.Ctrl&0x08 != 0 {
+			basePT = 0x1000
+		}
+		if spriteHeight == 16 {
+			basePT = uint16(tileIdx&0x01) * 0x1000
+			tileIdx &= 0xFE
+		}
+
+		for py := 0; py < spriteHeight; py++ {
+			drawY := spriteY + py
+			if drawY < 0 || drawY >= 240 {
+				continue
+			}
+
+			realPy := py
+			if flipV {
+				realPy = spriteHeight - 1 - py
+			}
+
+			ptAddr := basePT + uint16(tileIdx)*16 + uint16(realPy)
+			if spriteHeight == 16 && realPy >= 8 {
+				ptAddr = basePT + uint16(tileIdx+1)*16 + uint16(realPy-8)
+			}
+
+			lo := p.readCHR(ptAddr)
+			hi := p.readCHR(ptAddr + 8)
+
+			for px := 0; px < 8; px++ {
+				drawX := spriteX + px
+				if drawX < 0 || drawX >= 256 {
+					continue
+				}
+
+				realPx := px
+				if flipH {
+					realPx = 7 - px
+				}
+
+				bit := 7 - realPx
+				colorIdx := ((hi>>bit)&1)<<1 | ((lo>>bit)&1)
+
+				if colorIdx == 0 {
+					continue // transparent
+				}
+
+				palAddr := 0x3F00 + uint16(paletteGroup)*4 + uint16(colorIdx)
+				cIdx := p.readVRAM(palAddr) & 0x3F
+
+				r, g, b, a := p.paletteColor(cIdx)
+				offset := (drawY*256 + drawX) * 4
+				p.Frame[offset] = r
+				p.Frame[offset+1] = g
+				p.Frame[offset+2] = b
+				p.Frame[offset+3] = a
+			}
+		}
+	}
 }
