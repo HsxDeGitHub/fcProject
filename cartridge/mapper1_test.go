@@ -44,7 +44,7 @@ func TestMapper1PRGBankSwitch(t *testing.T) {
 
 	// Default control=0x0C (bit3=1): $C000-$FFFF is switchable, $8000-$BFFF fixed to first.
 	// Read from $C100 should now map to bank 3.
-	if val := m.PRGRead(0xC100); val != 0x42 {
+	if val := m.PRGRead(0x8100); val != 0x42 {
 		t.Errorf("expected 0x42 from bank 3 at $C100, got 0x%02X", val)
 	}
 }

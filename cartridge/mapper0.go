@@ -4,11 +4,14 @@ type Mapper0 struct {
 	prg    []byte
 	chr    []byte
 	chrRAM bool
+	mirror uint8
 }
 
-func NewMapper0(prg, chr []byte, chrRAM bool) *Mapper0 {
-	return &Mapper0{prg: prg, chr: chr, chrRAM: chrRAM}
+func NewMapper0(prg, chr []byte, chrRAM bool, mirror uint8) *Mapper0 {
+	return &Mapper0{prg: prg, chr: chr, chrRAM: chrRAM, mirror: mirror}
 }
+
+func (m *Mapper0) MirrorMode() uint8 { return m.mirror }
 
 func (m *Mapper0) PRGRead(addr uint16) uint8 {
 	if addr < 0x8000 {
@@ -39,4 +42,3 @@ func (m *Mapper0) CHRWrite(addr uint16, data uint8) {
 	}
 }
 
-func (m *Mapper0) MirrorMode() uint8 { return 0 }

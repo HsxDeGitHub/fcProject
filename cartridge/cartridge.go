@@ -62,7 +62,7 @@ func Load(data []byte) (*Cartridge, error) {
 	var m Mapper
 	switch mapper {
 	case 0:
-		m = NewMapper0(prgROM, chrROM, chrBanks == 0)
+		m = NewMapper0(prgROM, chrROM, chrBanks == 0, uint8(mirror))
 	case 1:
 		m = NewMapper1(prgROM, chrROM, uint8(mirror))
 	case 4:

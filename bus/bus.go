@@ -25,11 +25,12 @@ type InputInterface interface {
 }
 
 type Bus struct {
-	RAM  [2048]uint8
-	Cart CartridgeInterface
-	PPU  PPUInterface
-	APU  APUInterface
-	Inp  InputInterface
+	RAM   [2048]uint8
+	PRGRAM [8192]uint8 // PRG RAM at $6000-$7FFF
+	Cart   CartridgeInterface
+	PPU    PPUInterface
+	APU    APUInterface
+	Inp    InputInterface
 }
 
 func NewBus(cart CartridgeInterface, ppu PPUInterface, apu APUInterface, inp InputInterface) *Bus {
@@ -60,6 +61,8 @@ func (b *Bus) Read(addr uint16) uint8 {
 			return b.APU.ReadStatus()
 		}
 		return 0
+	case addr >= 0x6000 && addr < 0x8000:
+		return b.PRGRAM[addr&0x1FFF]
 	case addr >= 0x4020:
 		if b.Cart != nil {
 			return b.Cart.PRGRead(addr)
@@ -91,6 +94,8 @@ func (b *Bus) Write(addr uint16, data uint8) {
 		if b.APU != nil {
 			b.APU.WriteRegister(addr, data)
 		}
+	case addr >= 0x6000 && addr < 0x8000:
+		b.PRGRAM[addr&0x1FFF] = data
 	case addr >= 0x4020:
 		if b.Cart != nil {
 			b.Cart.PRGWrite(addr, data)
