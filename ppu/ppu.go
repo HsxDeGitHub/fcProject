@@ -259,15 +259,13 @@ func (p *PPU) renderBackground() {
 		basePT = 0x1000
 	}
 
-	// Scroll split: if scroll changed mid-frame ($2005 written >2 times),
-	// use NMI scroll for playfield (Y>=30) and current scroll for status bar (Y<30).
-	split := p.ScrollWrites > 2
-	const splitY = 30 // SMB status bar height
-
 	for y := 0; y < 240; y++ {
+		// Use the current scroll values for the entire frame.
+		// The NmiScrollX/Y track the first scroll writes (playfield scroll)
+		// and are preferred when scroll was changed mid-frame.
 		useScrollX := p.ScrollX
 		useScrollY := p.ScrollY
-		if split && y >= splitY {
+		if p.ScrollWrites > 2 {
 			useScrollX = p.NmiScrollX
 			useScrollY = p.NmiScrollY
 		}
