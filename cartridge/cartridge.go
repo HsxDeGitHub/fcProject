@@ -11,7 +11,7 @@ type Cartridge struct {
 	PRGBanks int    // PRG ROM bank 数（16KB 单位）
 	CHRBanks int    // CHR ROM bank 数（8KB 单位）
 	Mapper   int    // Mapper 编号
-	Mirror   int    // 0=水平, 1=垂直
+	Mirror   int    // 0=水平, 1=垂直（PPU 需要此字段确定 nametable 镜像模式）
 }
 
 func Load(data []byte) (*Cartridge, error) {
@@ -25,7 +25,16 @@ func Load(data []byte) (*Cartridge, error) {
 	prgBanks := int(data[4])
 	chrBanks := int(data[5])
 	flags6 := data[6]
-	mapper := int(flags6 >> 4)
+	flags7 := data[7]
+
+	// Mapper number: lower nibble from flags6, upper nibble from flags7
+	mapper := int(flags6>>4) | int(flags7&0xF0)
+
+	// 当前仅支持 Mapper 0
+	if mapper != 0 {
+		return nil, errors.New("unsupported mapper")
+	}
+
 	mirror := int(flags6 & 1)
 
 	prgSize := prgBanks * 16384
@@ -58,9 +67,15 @@ func Load(data []byte) (*Cartridge, error) {
 }
 
 func (c *Cartridge) PRGRead(addr uint16) uint8 {
+	if addr < 0x8000 {
+		return 0
+	}
 	offset := addr - 0x8000
 	if c.PRGBanks == 1 {
 		offset = offset & 0x3FFF
+	}
+	if int(offset) >= len(c.PRG) {
+		return 0
 	}
 	return c.PRG[offset]
 }
@@ -70,11 +85,16 @@ func (c *Cartridge) PRGWrite(addr uint16, data uint8) {
 }
 
 func (c *Cartridge) CHRRead(addr uint16) uint8 {
+	if int(addr) >= len(c.CHR) {
+		return 0
+	}
 	return c.CHR[addr]
 }
 
 func (c *Cartridge) CHRWrite(addr uint16, data uint8) {
 	if c.CHRBanks == 0 {
-		c.CHR[addr] = data
+		if int(addr) < len(c.CHR) {
+			c.CHR[addr] = data
+		}
 	}
 }
