@@ -228,7 +228,7 @@ func (p *PPU) renderBackground() {
 	}
 
 	for y := 0; y < 240; y++ {
-		realY := (y + int(p.ScrollY)) % 240
+		realY := (y + int(p.ScrollY)) % 256
 		tileY := realY / 8
 		for x := 0; x < 256; x++ {
 			realX := (x + int(p.ScrollX)) % 256
@@ -341,6 +341,12 @@ func (p *PPU) renderSprites() {
 
 				r, g, b, a := p.paletteColor(cIdx)
 				offset := (drawY*256 + drawX) * 4
+
+				// Sprite priority: bit 5 set = render behind non-transparent background
+				if attr&0x20 != 0 && (p.Frame[offset]|p.Frame[offset+1]|p.Frame[offset+2]|p.Frame[offset+3]) != 0 {
+					continue
+				}
+
 				p.Frame[offset] = r
 				p.Frame[offset+1] = g
 				p.Frame[offset+2] = b
