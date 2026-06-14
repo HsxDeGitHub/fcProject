@@ -97,7 +97,7 @@ func (m *MenuState) Selected() string {
 	return ""
 }
 
-type Game struct {
+type GameState struct {
 	CPU       *cpu.CPU
 	PPU       *ppu.PPU
 	APU       *apu.APU
@@ -108,7 +108,7 @@ type Game struct {
 	frameImage *ebiten.Image
 }
 
-func NewGame(romPath string) (*Game, error) {
+func NewGameState(romPath string) (*GameState, error) {
 	data, err := os.ReadFile(romPath)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func NewGame(romPath string) (*Game, error) {
 	b := bus.NewBus(cart, p, a, inp)
 	c := cpu.New(b)
 
-	g := &Game{
+	g := &GameState{
 		CPU:       c,
 		PPU:       p,
 		APU:       a,
@@ -143,7 +143,7 @@ func NewGame(romPath string) (*Game, error) {
 	return g, nil
 }
 
-func (g *Game) Update() error {
+func (g *GameState) Update() error {
 	g.Input.Update()
 
 	// Set VBlank (bit 7) and sprite 0 hit (bit 6) at frame start.
@@ -169,7 +169,7 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
+func (g *GameState) Draw(screen *ebiten.Image) {
 	frame := g.PPU.Frame[:]
 	g.frameImage.WritePixels(frame)
 	op := &ebiten.DrawImageOptions{}
@@ -177,21 +177,73 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.frameImage, op)
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+func (g *GameState) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return screenWidth, screenHeight
+}
+
+type AppState int
+
+const (
+	StateMenu AppState = iota
+	StateGame
+)
+
+type App struct {
+	state AppState
+	menu  *MenuState
+	game  *GameState
+}
+
+func NewApp() *App {
+	return &App{
+		state: StateMenu,
+		menu:  NewMenu(),
+	}
+}
+
+func (a *App) Update() error {
+	switch a.state {
+	case StateMenu:
+		a.menu.Update()
+		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+			sel := a.menu.Selected()
+			if sel != "" {
+				g, err := NewGameState("rom/" + sel)
+				if err != nil {
+					return err
+				}
+				a.game = g
+				a.state = StateGame
+			}
+		}
+	case StateGame:
+		a.game.Update()
+		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+			a.state = StateMenu
+		}
+	}
+	return nil
+}
+
+func (a *App) Draw(screen *ebiten.Image) {
+	switch a.state {
+	case StateMenu:
+		a.menu.Draw(screen)
+	case StateGame:
+		a.game.Draw(screen)
+	}
+}
+
+func (a *App) Layout(w, h int) (int, int) {
 	return screenWidth, screenHeight
 }
 
 func main() {
-	game, err := NewGame("rom/SuperMary.nes")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("NES Emulator - Super Mary")
+	ebiten.SetWindowTitle("NES Emulator")
 	ebiten.SetTPS(60)
 
-	if err := ebiten.RunGame(game); err != nil {
+	if err := ebiten.RunGame(NewApp()); err != nil {
 		log.Fatal(err)
 	}
 }
