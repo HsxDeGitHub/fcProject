@@ -16,7 +16,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 const (
@@ -32,6 +33,39 @@ type MenuState struct {
 	prevDown    bool
 	errMsg      string
 	errTimer    int
+	menuFont    font.Face
+}
+
+func loadChineseFont() font.Face {
+	fontPaths := []string{
+		"/System/Library/Fonts/STHeiti Medium.ttc",
+		"/System/Library/Fonts/PingFang.ttc",
+	}
+	for _, p := range fontPaths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		// Try as TTC first, then as single font
+		var tt *opentype.Font
+		col, err := opentype.ParseCollection(data)
+		if err == nil && col.NumFonts() > 0 {
+			tt, _ = col.Font(0) // Use first font in collection
+		} else {
+			tt, err = opentype.Parse(data)
+			if err != nil {
+				continue
+			}
+		}
+		face, err := opentype.NewFace(tt, &opentype.FaceOptions{
+			Size: 14, DPI: 72, Hinting: font.HintingFull,
+		})
+		if err != nil {
+			continue
+		}
+		return face
+	}
+	return nil
 }
 
 func NewMenu() *MenuState {
@@ -46,7 +80,10 @@ func NewMenu() *MenuState {
 		}
 	}
 	sort.Strings(files)
-	return &MenuState{romFiles: files}
+	return &MenuState{
+		romFiles: files,
+		menuFont: loadChineseFont(),
+	}
 }
 
 func (m *MenuState) Update() error {
@@ -69,7 +106,10 @@ func (m *MenuState) Update() error {
 
 func (m *MenuState) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
-	face := basicfont.Face7x13
+	face := m.menuFont
+	if face == nil {
+		return // Can't render without font
+	}
 
 	// Title
 	title := "=== NES Emulator ==="
