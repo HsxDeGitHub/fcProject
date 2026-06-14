@@ -64,7 +64,7 @@ func (p *PPU) ReadRegister(addr uint16) uint8 {
 	switch addr {
 	case 0x2002:
 		result := p.Status
-		p.Status &^= 0x80
+		p.Status &^= 0x80 | 0x40 // Clear VBlank and sprite 0 hit
 		p.Latch = false
 		// Re-assert VBlank to support multiple VBlank poll loops
 		if p.VblankReasserts > 0 {
@@ -226,7 +226,6 @@ func (p *PPU) RenderFrame() []byte {
 	for i := range p.tileBuffer {
 		p.tileBuffer[i] = 0
 	}
-	p.Status &^= 0x40       // Clear sprite 0 hit (set at frame start)
 	p.Status |= 0x80        // Set VBlank
 
 	if p.Mask&0x08 != 0 {

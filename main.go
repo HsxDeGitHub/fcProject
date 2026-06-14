@@ -69,8 +69,9 @@ func NewGame(romPath string) (*Game, error) {
 func (g *Game) Update() error {
 	g.Input.Update()
 
-	// Set VBlank and sprite 0 hit at frame start so the CPU can detect them.
-	// Bit 7 = VBlank, Bit 6 = sprite 0 hit (required by SMB for scroll split timing).
+	// Set VBlank (bit 7) and sprite 0 hit (bit 6) at frame start.
+	// Bit 7 is required for VBlank wait loops during init.
+	// Bit 6 is required for SMB scroll split timing ($8150 and $813D checks).
 	g.PPU.Status |= 0x80 | 0x40
 	g.PPU.VblankReasserts = 10
 

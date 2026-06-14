@@ -43,3 +43,11 @@ func (c *Controller) Write(data uint8) {
 		c.index = 0
 	}
 }
+
+// SimulateKey sets or clears a button state directly (for testing without Ebitengine).
+// button: 0=A, 1=B, 2=Select, 3=Start, 4=Up, 5=Down, 6=Left, 7=Right
+func (c *Controller) SimulateKey(button int, pressed bool) {
+	if button >= 0 && button < 8 {
+		c.buttons[button] = pressed
+	}
+}
