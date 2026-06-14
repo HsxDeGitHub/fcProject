@@ -5,13 +5,21 @@ import (
 	"errors"
 )
 
+type Mapper interface {
+	PRGRead(addr uint16) uint8
+	PRGWrite(addr uint16, data uint8)
+	CHRRead(addr uint16) uint8
+	CHRWrite(addr uint16, data uint8)
+	MirrorMode() uint8
+}
+
 type Cartridge struct {
 	PRG      []byte // PRG ROM 数据
 	CHR      []byte // CHR ROM 数据
 	PRGBanks int    // PRG ROM bank 数（16KB 单位）
 	CHRBanks int    // CHR ROM bank 数（8KB 单位）
 	Mapper   int    // Mapper 编号
-	Mirror   int    // 0=水平, 1=垂直（PPU 需要此字段确定 nametable 镜像模式）
+	mapper   Mapper
 }
 
 func Load(data []byte) (*Cartridge, error) {
@@ -29,11 +37,6 @@ func Load(data []byte) (*Cartridge, error) {
 
 	// Mapper number: lower nibble from flags6, upper nibble from flags7
 	mapper := int(flags6>>4) | int(flags7&0xF0)
-
-	// 当前仅支持 Mapper 0
-	if mapper != 0 {
-		return nil, errors.New("unsupported mapper")
-	}
 
 	mirror := int(flags6 & 1)
 
@@ -56,49 +59,57 @@ func Load(data []byte) (*Cartridge, error) {
 		copy(chrROM, data[headerEnd+prgSize:headerEnd+prgSize+chrSize])
 	}
 
+	var m Mapper
+	switch mapper {
+	case 0:
+		m = NewMapper0(prgROM, chrROM, chrBanks == 0)
+	case 1:
+		m = NewMapper1(prgROM, chrROM, uint8(mirror))
+	case 4:
+		m = NewMapper4(prgROM, chrROM, uint8(mirror))
+	default:
+		return nil, errors.New("unsupported mapper")
+	}
+
 	return &Cartridge{
 		PRG:      prgROM,
 		CHR:      chrROM,
 		PRGBanks: prgBanks,
 		CHRBanks: chrBanks,
 		Mapper:   mapper,
-		Mirror:   mirror,
+		mapper:   m,
 	}, nil
 }
 
 func (c *Cartridge) PRGRead(addr uint16) uint8 {
-	if addr < 0x8000 {
-		return 0
+	if c.mapper != nil {
+		return c.mapper.PRGRead(addr)
 	}
-	offset := addr - 0x8000
-	if c.PRGBanks == 1 {
-		offset = offset & 0x3FFF
-	}
-	if int(offset) >= len(c.PRG) {
-		return 0
-	}
-	return c.PRG[offset]
+	return 0
 }
 
 func (c *Cartridge) PRGWrite(addr uint16, data uint8) {
-	// Mapper 0 不支持 PRG ROM 写入
+	if c.mapper != nil {
+		c.mapper.PRGWrite(addr, data)
+	}
 }
 
 func (c *Cartridge) CHRRead(addr uint16) uint8 {
-	if int(addr) >= len(c.CHR) {
-		return 0
+	if c.mapper != nil {
+		return c.mapper.CHRRead(addr)
 	}
-	return c.CHR[addr]
-}
-
-func (c *Cartridge) MirrorMode() uint8 {
-	return uint8(c.Mirror)
+	return 0
 }
 
 func (c *Cartridge) CHRWrite(addr uint16, data uint8) {
-	if c.CHRBanks == 0 {
-		if int(addr) < len(c.CHR) {
-			c.CHR[addr] = data
-		}
+	if c.mapper != nil {
+		c.mapper.CHRWrite(addr, data)
 	}
+}
+
+func (c *Cartridge) MirrorMode() uint8 {
+	if c.mapper != nil {
+		return c.mapper.MirrorMode()
+	}
+	return 0
 }

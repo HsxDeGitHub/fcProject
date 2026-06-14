@@ -65,7 +65,7 @@ func TestLoadUnsupportedMapper(t *testing.T) {
 	rom[0], rom[1], rom[2], rom[3] = 'N', 'E', 'S', 0x1A
 	rom[4] = 1
 	rom[5] = 1
-	rom[6] = 0x10 // Mapper 1 (lower nibble)
+	rom[6] = 0x20 // Mapper 2 (lower nibble)
 	rom[7] = 0x00
 	_, err := Load(rom)
 	if err == nil {
