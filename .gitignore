@@ -20,8 +20,8 @@ vendor/
 *.swp
 *.swo
 
-# ROMs (keep structure, ignore actual ROMs)
-rom/*.nes
+# Docs
+docs/
 
 # OS
 .DS_Store
