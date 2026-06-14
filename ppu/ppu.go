@@ -44,6 +44,7 @@ type PPU struct {
 	NmiScrollY  uint8   // first scroll Y (playfield)
 	LastPlayfieldX uint8 // persisted playfield scroll across frames
 	LastPlayfieldY uint8 // persisted playfield scroll across frames
+	LastPlayfieldCtrl uint8 // PPUCTRL at time of playfield scroll
 	OAM     [256]uint8
 	Palette [32]uint8
 
@@ -255,24 +256,26 @@ func (p *PPU) RenderFrame() []byte {
 }
 
 func (p *PPU) renderBackground() {
-	baseNT := 0x2000 + uint16(p.Ctrl&0x03)*0x400
-	basePT := uint16(0)
-	if p.Ctrl&0x10 != 0 {
-		basePT = 0x1000
-	}
-
 	// Persist playfield scroll across frames:
-	// SW==2 = NMI-only frame → save as playfield scroll.
-	// SW>2 = sprite code intervened → use saved playfield scroll.
+	// SW==2 = NMI-only frame → save scroll + Ctrl as playfield state.
+	// SW>2 = sprite code intervened → use saved playfield state.
 	if p.ScrollWrites == 2 {
 		p.LastPlayfieldX = p.ScrollX
 		p.LastPlayfieldY = p.ScrollY
+		p.LastPlayfieldCtrl = p.Ctrl
 	}
 	useScrollX := p.ScrollX
 	useScrollY := p.ScrollY
+	useCtrl := p.Ctrl
 	if p.ScrollWrites > 2 {
 		useScrollX = p.LastPlayfieldX
 		useScrollY = p.LastPlayfieldY
+		useCtrl = p.LastPlayfieldCtrl
+	}
+	baseNT := 0x2000 + uint16(useCtrl&0x03)*0x400
+	basePT := uint16(0)
+	if useCtrl&0x10 != 0 {
+		basePT = 0x1000
 	}
 
 	for y := 0; y < 240; y++ {
