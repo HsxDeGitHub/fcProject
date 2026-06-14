@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 
 	"fcProject/apu"
 	"fcProject/bus"
@@ -36,7 +37,7 @@ func NewMenu() *MenuState {
 	}
 	var files []string
 	for _, e := range entries {
-		if !e.IsDir() && len(e.Name()) > 4 && e.Name()[len(e.Name())-4:] == ".nes" {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".nes") {
 			files = append(files, e.Name())
 		}
 	}
