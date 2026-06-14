@@ -15,14 +15,14 @@ func New() *Controller {
 }
 
 func (c *Controller) Update() {
-	c.buttons[0] = ebiten.IsKeyPressed(ebiten.KeyZ)          // A
-	c.buttons[1] = ebiten.IsKeyPressed(ebiten.KeyX)          // B
-	c.buttons[2] = ebiten.IsKeyPressed(ebiten.KeyEnter)      // Select
-	c.buttons[3] = ebiten.IsKeyPressed(ebiten.KeyShiftRight) // Start
-	c.buttons[4] = ebiten.IsKeyPressed(ebiten.KeyArrowUp)    // Up
-	c.buttons[5] = ebiten.IsKeyPressed(ebiten.KeyArrowDown)  // Down
-	c.buttons[6] = ebiten.IsKeyPressed(ebiten.KeyArrowLeft)  // Left
-	c.buttons[7] = ebiten.IsKeyPressed(ebiten.KeyArrowRight) // Right
+	c.buttons[0] = ebiten.IsKeyPressed(ebiten.KeyZ)                                                          // A
+	c.buttons[1] = ebiten.IsKeyPressed(ebiten.KeyX)                                                          // B
+	c.buttons[2] = ebiten.IsKeyPressed(ebiten.KeyShiftRight) || ebiten.IsKeyPressed(ebiten.KeyShiftLeft)      // Select
+	c.buttons[3] = ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)               // Start
+	c.buttons[4] = ebiten.IsKeyPressed(ebiten.KeyArrowUp)                                                    // Up
+	c.buttons[5] = ebiten.IsKeyPressed(ebiten.KeyArrowDown)                                                  // Down
+	c.buttons[6] = ebiten.IsKeyPressed(ebiten.KeyArrowLeft)                                                  // Left
+	c.buttons[7] = ebiten.IsKeyPressed(ebiten.KeyArrowRight)                                                 // Right
 }
 
 func (c *Controller) Read() uint8 {

@@ -70,7 +70,6 @@ func (g *Game) Update() error {
 	g.Input.Update()
 
 	// Set VBlank at frame start so the CPU can detect it.
-	// The NES generates VBlank during scanlines 241-261 (~20 scanlines).
 	g.PPU.Status |= 0x80
 	g.PPU.VblankReasserts = 10
 
