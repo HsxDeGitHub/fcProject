@@ -26,10 +26,12 @@ const (
 )
 
 type MenuState struct {
-	romFiles []string
-	cursor   int
-	prevUp   bool
-	prevDown bool
+	romFiles    []string
+	cursor      int
+	prevUp      bool
+	prevDown    bool
+	errMsg      string
+	errTimer    int
 }
 
 func NewMenu() *MenuState {
@@ -59,6 +61,9 @@ func (m *MenuState) Update() error {
 	}
 	m.prevUp = up
 	m.prevDown = down
+	if m.errTimer > 0 {
+		m.errTimer--
+	}
 	return nil
 }
 
@@ -87,6 +92,10 @@ func (m *MenuState) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Error message
+	if m.errTimer > 0 {
+		text.Draw(screen, m.errMsg, face, 220, 560, color.RGBA{255, 80, 80, 255})
+	}
 	// Footer
 	text.Draw(screen, "Arrow Keys: Select  Enter: Start", face, 250, 680, color.RGBA{128, 128, 128, 255})
 }
@@ -98,6 +107,11 @@ func (m *MenuState) Selected() string {
 		return m.romFiles[m.cursor]
 	}
 	return ""
+}
+
+func (m *MenuState) SetError(msg string) {
+	m.errMsg = msg
+	m.errTimer = 180 // Show error for ~3 seconds at 60fps
 }
 
 type GameState struct {
@@ -218,10 +232,11 @@ func (a *App) Update() error {
 			if sel != "" {
 				g, err := NewGameState("rom/" + sel)
 				if err != nil {
-					return err
+					a.menu.SetError("Cannot load: " + err.Error())
+				} else {
+					a.game = g
+					a.state = StateGame
 				}
-				a.game = g
-				a.state = StateGame
 			}
 		}
 	case StateGame:
