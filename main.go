@@ -28,6 +28,8 @@ const (
 type MenuState struct {
 	romFiles []string
 	cursor   int
+	prevUp   bool
+	prevDown bool
 }
 
 func NewMenu() *MenuState {
@@ -46,16 +48,17 @@ func NewMenu() *MenuState {
 }
 
 func (m *MenuState) Update() error {
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
-		if m.cursor > 0 {
-			m.cursor--
-		}
+	up := ebiten.IsKeyPressed(ebiten.KeyArrowUp)
+	down := ebiten.IsKeyPressed(ebiten.KeyArrowDown)
+
+	if up && !m.prevUp && m.cursor > 0 {
+		m.cursor--
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
-		if m.cursor < len(m.romFiles)-1 {
-			m.cursor++
-		}
+	if down && !m.prevDown && m.cursor < len(m.romFiles)-1 {
+		m.cursor++
 	}
+	m.prevUp = up
+	m.prevDown = down
 	return nil
 }
 
@@ -189,9 +192,11 @@ const (
 )
 
 type App struct {
-	state AppState
-	menu  *MenuState
-	game  *GameState
+	state     AppState
+	menu      *MenuState
+	game      *GameState
+	prevEnter bool
+	prevESC   bool
 }
 
 func NewApp() *App {
@@ -202,10 +207,13 @@ func NewApp() *App {
 }
 
 func (a *App) Update() error {
+	enter := ebiten.IsKeyPressed(ebiten.KeyEnter)
+	esc := ebiten.IsKeyPressed(ebiten.KeyEscape)
+
 	switch a.state {
 	case StateMenu:
 		a.menu.Update()
-		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+		if enter && !a.prevEnter {
 			sel := a.menu.Selected()
 			if sel != "" {
 				g, err := NewGameState("rom/" + sel)
@@ -218,10 +226,12 @@ func (a *App) Update() error {
 		}
 	case StateGame:
 		a.game.Update()
-		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+		if esc && !a.prevESC {
 			a.state = StateMenu
 		}
 	}
+	a.prevEnter = enter
+	a.prevESC = esc
 	return nil
 }
 
