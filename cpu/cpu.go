@@ -488,6 +488,11 @@ func (c *CPU) execute(opcode uint8) int {
 		c.P = c.pop8()&0xEF | FlagU
 		return 4
 
+	// ===== JMP =====
+	case 0x6C: // indirect
+		c.PC = c.ind()
+		return 5
+
 	// ===== NOP =====
 	case 0xEA: // NOP
 		return 2

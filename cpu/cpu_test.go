@@ -475,3 +475,187 @@ func TestRunCycles(t *testing.T) {
 		t.Errorf("RunCycles: cycles expected >=5, got %d", cpu.Cycles)
 	}
 }
+
+func TestJMPIndirect(t *testing.T) {
+	cpu, bus := newCPU()
+	// JMP ($0300) - pointer at $0300/$0301 -> target $9050
+	bus.ram[0x8000] = 0x6C // JMP indirect
+	bus.ram[0x8001] = 0x00  // lo byte of pointer
+	bus.ram[0x8002] = 0x03  // hi byte of pointer
+	bus.ram[0x0300] = 0x50  // lo byte of target
+	bus.ram[0x0301] = 0x90  // hi byte of target
+	cycles := cpu.Step()
+	if cpu.PC != 0x9050 {
+		t.Errorf("JMP ($0300): expected PC=0x9050, got 0x%04X", cpu.PC)
+	}
+	if cycles != 5 {
+		t.Errorf("JMP ($0300): expected 5 cycles, got %d", cycles)
+	}
+}
+
+func TestLDAAbsoluteX(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.X = 0x10
+	bus.ram[0x0210] = 0xAB
+	bus.ram[0x8000] = 0xBD // LDA $0200,X
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x02
+	cpu.Step()
+	if cpu.A != 0xAB {
+		t.Errorf("LDA abs,X: A expected 0xAB, got 0x%02X", cpu.A)
+	}
+}
+
+func TestLDAAbsoluteY(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x20
+	bus.ram[0x0420] = 0xCD
+	bus.ram[0x8000] = 0xB9 // LDA $0400,Y
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x04
+	cpu.Step()
+	if cpu.A != 0xCD {
+		t.Errorf("LDA abs,Y: A expected 0xCD, got 0x%02X", cpu.A)
+	}
+}
+
+func TestLDAIndirectY(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x10
+	// ($80),Y: zp pointer at $80/$81 -> $0300, then +Y -> $0310
+	bus.ram[0x0080] = 0x00
+	bus.ram[0x0081] = 0x03
+	bus.ram[0x0310] = 0x77
+	bus.ram[0x8000] = 0xB1 // LDA ($80),Y
+	bus.ram[0x8001] = 0x80
+	cpu.Step()
+	if cpu.A != 0x77 {
+		t.Errorf("LDA ($zp),Y: A expected 0x77, got 0x%02X", cpu.A)
+	}
+}
+
+func TestLDAIndirectYPageCross(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x01
+	// ($80),Y: ptr at $80/$81 -> $02FF, then +Y=$01 -> $0300 (page crossed)
+	bus.ram[0x0080] = 0xFF
+	bus.ram[0x0081] = 0x02
+	bus.ram[0x0300] = 0xAA
+	bus.ram[0x8000] = 0xB1 // LDA ($80),Y
+	bus.ram[0x8001] = 0x80
+	cycles := cpu.Step()
+	if cpu.A != 0xAA {
+		t.Errorf("LDA ($zp),Y page cross: A expected 0xAA, got 0x%02X", cpu.A)
+	}
+	if cycles != 6 {
+		t.Errorf("LDA ($zp),Y page cross: expected 6 cycles, got %d", cycles)
+	}
+}
+
+func TestLDXZeroPageY(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x05
+	bus.ram[0x0085] = 0x3F
+	bus.ram[0x8000] = 0xB6 // LDX $80,Y
+	bus.ram[0x8001] = 0x80
+	cpu.Step()
+	if cpu.X != 0x3F {
+		t.Errorf("LDX zp,Y: X expected 0x3F, got 0x%02X", cpu.X)
+	}
+}
+
+func TestSTXAllModes(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.X = 0x55
+
+	// STX zero page
+	bus.ram[0x8000] = 0x86 // STX $30
+	bus.ram[0x8001] = 0x30
+	cpu.Step()
+	if bus.ram[0x0030] != 0x55 {
+		t.Errorf("STX zp: expected 0x55, got 0x%02X", bus.ram[0x0030])
+	}
+
+	// STX zero page, Y
+	cpu.PC = 0x8000
+	cpu.Y = 0x02
+	bus.ram[0x8000] = 0x96 // STX $40,Y
+	bus.ram[0x8001] = 0x40
+	cpu.Step()
+	if bus.ram[0x0042] != 0x55 {
+		t.Errorf("STX zp,Y: expected 0x55, got 0x%02X", bus.ram[0x0042])
+	}
+
+	// STX absolute
+	cpu.PC = 0x8000
+	bus.ram[0x8000] = 0x8E // STX $0600
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x06
+	cpu.Step()
+	if bus.ram[0x0600] != 0x55 {
+		t.Errorf("STX abs: expected 0x55, got 0x%02X", bus.ram[0x0600])
+	}
+}
+
+func TestSTYAllModes(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x77
+
+	// STY zero page
+	bus.ram[0x8000] = 0x84 // STY $50
+	bus.ram[0x8001] = 0x50
+	cpu.Step()
+	if bus.ram[0x0050] != 0x77 {
+		t.Errorf("STY zp: expected 0x77, got 0x%02X", bus.ram[0x0050])
+	}
+
+	// STY zero page, X
+	cpu.PC = 0x8000
+	cpu.X = 0x03
+	bus.ram[0x8000] = 0x94 // STY $40,X
+	bus.ram[0x8001] = 0x40
+	cpu.Step()
+	if bus.ram[0x0043] != 0x77 {
+		t.Errorf("STY zp,X: expected 0x77, got 0x%02X", bus.ram[0x0043])
+	}
+
+	// STY absolute
+	cpu.PC = 0x8000
+	bus.ram[0x8000] = 0x8C // STY $0700
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x07
+	cpu.Step()
+	if bus.ram[0x0700] != 0x77 {
+		t.Errorf("STY abs: expected 0x77, got 0x%02X", bus.ram[0x0700])
+	}
+}
+
+func TestLDAAbsXPageCross(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.X = 0x01
+	// LDA $02FF,X -> $0300 (page crossed: $02xx -> $03xx)
+	bus.ram[0x0300] = 0xEE
+	bus.ram[0x8000] = 0xBD // LDA abs,X
+	bus.ram[0x8001] = 0xFF  // lo
+	bus.ram[0x8002] = 0x02  // hi
+	cycles := cpu.Step()
+	if cpu.A != 0xEE {
+		t.Errorf("LDA abs,X page cross: A expected 0xEE, got 0x%02X", cpu.A)
+	}
+	if cycles != 5 {
+		t.Errorf("LDA abs,X page cross: expected 5 cycles, got %d", cycles)
+	}
+}
+
+func TestZpXWrap(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.X = 0x01
+	// LDA $FF,X: zp=$FF, X=$01 -> wrap to $00
+	bus.ram[0x0000] = 0x42
+	bus.ram[0x8000] = 0xB5 // LDA $FF,X
+	bus.ram[0x8001] = 0xFF
+	cpu.Step()
+	if cpu.A != 0x42 {
+		t.Errorf("LDA $FF,X wrap: A expected 0x42, got 0x%02X", cpu.A)
+	}
+}
