@@ -39,6 +39,9 @@ type PPU struct {
 	mirrorMode uint8  // cartridge-determined nametable mirroring
 
 	VRAM    [2048]uint8
+	ScrollWrites int     // count $2005 writes per frame
+	NmiScrollX  uint8   // first scroll X (playfield)
+	NmiScrollY  uint8   // first scroll Y (playfield)
 	OAM     [256]uint8
 	Palette [32]uint8
 
@@ -92,6 +95,15 @@ func (p *PPU) WriteRegister(addr uint16, data uint8) {
 		p.OAM[p.OAMAddr] = data
 		p.OAMAddr++
 	case 0x2005:
+			// Save first scroll pair (NMI/playfield scroll) for mid-frame split
+			if p.ScrollWrites < 2 {
+				if !p.Latch {
+					p.NmiScrollX = data
+				} else {
+					p.NmiScrollY = data
+				}
+			}
+			p.ScrollWrites++
 		if !p.Latch {
 			p.ScrollX = data
 			p.FineX = data & 0x07
@@ -235,6 +247,8 @@ func (p *PPU) RenderFrame() []byte {
 		p.renderSprites()
 	}
 
+	p.ScrollWrites = 0 // Reset for next frame
+
 	return p.Frame[:]
 }
 
@@ -245,8 +259,19 @@ func (p *PPU) renderBackground() {
 		basePT = 0x1000
 	}
 
+	// Scroll split: if scroll changed mid-frame ($2005 written >2 times),
+	// use NMI scroll for playfield (Y>=30) and current scroll for status bar (Y<30).
+	split := p.ScrollWrites > 2
+	const splitY = 30 // SMB status bar height
+
 	for y := 0; y < 240; y++ {
-		rawY := y + int(p.ScrollY)
+		useScrollX := p.ScrollX
+		useScrollY := p.ScrollY
+		if split && y >= splitY {
+			useScrollX = p.NmiScrollX
+			useScrollY = p.NmiScrollY
+		}
+		rawY := y + int(useScrollY)
 		ntRow := uint16(0)
 		if rawY >= 256 {
 			ntRow = 0x800
@@ -256,7 +281,7 @@ func (p *PPU) renderBackground() {
 		pixelY := realY & 7
 
 		for x := 0; x < 256; x++ {
-			rawX := x + int(p.ScrollX)
+			rawX := x + int(useScrollX)
 			ntCol := uint16(0)
 			if rawX >= 256 {
 				ntCol = 0x400
