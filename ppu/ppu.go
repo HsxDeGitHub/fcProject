@@ -44,9 +44,10 @@ type PPU struct {
 	Frame     [ScreenWidth * ScreenHeight * 4]uint8
 	readBuffer uint8
 
-	Scanline int
-	Cycle    int
-	NMI      bool
+	Scanline          int
+	Cycle             int
+	NMI               bool
+	VblankReasserts   int // re-assert VBlank N times to support multi-poll init
 }
 
 func New(cart CartridgeInterface) *PPU {
@@ -59,6 +60,11 @@ func (p *PPU) ReadRegister(addr uint16) uint8 {
 		result := p.Status
 		p.Status &^= 0x80
 		p.W = false
+			// Re-assert VBlank to support multiple VBlank poll loops
+			if p.VblankReasserts > 0 {
+				p.Status |= 0x80
+				p.VblankReasserts--
+			}
 		p.scrollLatch = false
 		return result
 	case 0x2007:

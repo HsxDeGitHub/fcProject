@@ -59,6 +59,16 @@ func NewGame(romPath string) (*Game, error) {
 	}
 
 	g.CPU.Reset()
+
+	// Force-write test palette: sky blue background
+	g.PPU.Palette[0] = 0x22 // sky blue
+	g.PPU.Palette[1] = 0x30 // white
+	g.PPU.Palette[2] = 0x16 // red
+	g.PPU.Palette[3] = 0x1A // green
+	for i := 4; i < 16; i++ {
+		g.PPU.Palette[i] = g.PPU.Palette[i%4]
+	}
+
 	log.Printf("Loaded ROM: %s (Mapper %d, %d PRG, %d CHR)",
 		romPath, cart.Mapper, cart.PRGBanks, cart.CHRBanks)
 
@@ -71,6 +81,7 @@ func (g *Game) Update() error {
 	// Set VBlank at frame start so the CPU can detect it.
 	// The NES generates VBlank during scanlines 241-261 (~20 scanlines).
 	g.PPU.Status |= 0x80
+	g.PPU.VblankReasserts = 10
 
 	// Trigger NMI if VBlank + NMI output enabled (PPUCTRL bit 7)
 	if g.PPU.Ctrl&0x80 != 0 {
