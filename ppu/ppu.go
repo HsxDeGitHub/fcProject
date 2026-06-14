@@ -226,7 +226,8 @@ func (p *PPU) RenderFrame() []byte {
 	for i := range p.tileBuffer {
 		p.tileBuffer[i] = 0
 	}
-	p.Status |= 0x80 // Set VBlank
+	p.Status &^= 0x40       // Clear sprite 0 hit (set at frame start)
+	p.Status |= 0x80        // Set VBlank
 
 	if p.Mask&0x08 != 0 {
 		p.renderBackground()

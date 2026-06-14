@@ -69,11 +69,12 @@ func NewGame(romPath string) (*Game, error) {
 func (g *Game) Update() error {
 	g.Input.Update()
 
-	// Set VBlank at frame start so the CPU can detect it.
-	g.PPU.Status |= 0x80
+	// Set VBlank and sprite 0 hit at frame start so the CPU can detect them.
+	// Bit 7 = VBlank, Bit 6 = sprite 0 hit (required by SMB for scroll split timing).
+	g.PPU.Status |= 0x80 | 0x40
 	g.PPU.VblankReasserts = 10
 
-	// Trigger NMI if VBlank + NMI output enabled (PPUCTRL bit 7)
+	// Trigger NMI if NMI output enabled (PPUCTRL bit 7)
 	if g.PPU.Ctrl&0x80 != 0 {
 		g.CPU.NMI = true
 	}
