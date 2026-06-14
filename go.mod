@@ -2,7 +2,10 @@ module fcProject
 
 go 1.25.1
 
-require github.com/hajimehoshi/ebiten/v2 v2.10.0-alpha.11
+require (
+	github.com/hajimehoshi/ebiten/v2 v2.10.0-alpha.11
+	golang.org/x/image v0.42.0
+)
 
 require (
 	github.com/ebitengine/gomobile v0.0.0-20260211053922-3d992dae95d1 // indirect
