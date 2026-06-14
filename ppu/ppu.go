@@ -196,9 +196,9 @@ func (p *PPU) mirrorNameTable(addr uint16) uint16 {
 		case 1:
 			return addr - 0x400
 		case 2:
-			return addr
-		case 3:
 			return addr - 0x400
+		case 3:
+			return addr - 0x800
 		}
 	}
 	return addr
@@ -228,22 +228,33 @@ func (p *PPU) renderBackground() {
 	}
 
 	for y := 0; y < 240; y++ {
-		realY := (y + int(p.ScrollY)) % 256
+		rawY := y + int(p.ScrollY)
+		ntRow := uint16(0)
+		if rawY >= 256 {
+			ntRow = 0x800
+		}
+		realY := rawY % 256
 		tileY := realY / 8
-		for x := 0; x < 256; x++ {
-			realX := (x + int(p.ScrollX)) % 256
-			tileX := realX / 8
+		pixelY := realY & 7
 
-			ntAddr := baseNT + uint16(tileY)*32 + uint16(tileX)
+		for x := 0; x < 256; x++ {
+			rawX := x + int(p.ScrollX)
+			ntCol := uint16(0)
+			if rawX >= 256 {
+				ntCol = 0x400
+			}
+			realX := rawX % 256
+			tileX := realX / 8
+			pixelX := realX & 7
+
+			ntAddr := baseNT + ntRow + ntCol + uint16(tileY)*32 + uint16(tileX)
 			tileIdx := p.readVRAM(ntAddr)
 
-			attrAddr := baseNT + 0x3C0 + uint16(tileY/4)*8 + uint16(tileX/4)
+			attrAddr := baseNT + ntRow + ntCol + 0x3C0 + uint16(tileY/4)*8 + uint16(tileX/4)
 			attr := p.readVRAM(attrAddr)
 			shift := ((tileY & 2) << 1) | (tileX & 2)
 			paletteGroup := (attr >> shift) & 0x03
 
-			pixelX := realX & 7
-			pixelY := realY & 7
 			ptAddr := basePT + uint16(tileIdx)*16 + uint16(pixelY)
 
 			lo := p.readCHR(ptAddr)
