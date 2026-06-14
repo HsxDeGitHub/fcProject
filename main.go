@@ -60,15 +60,6 @@ func NewGame(romPath string) (*Game, error) {
 
 	g.CPU.Reset()
 
-	// Force-write test palette: sky blue background
-	g.PPU.Palette[0] = 0x22 // sky blue
-	g.PPU.Palette[1] = 0x30 // white
-	g.PPU.Palette[2] = 0x16 // red
-	g.PPU.Palette[3] = 0x1A // green
-	for i := 4; i < 16; i++ {
-		g.PPU.Palette[i] = g.PPU.Palette[i%4]
-	}
-
 	log.Printf("Loaded ROM: %s (Mapper %d, %d PRG, %d CHR)",
 		romPath, cart.Mapper, cart.PRGBanks, cart.CHRBanks)
 

@@ -717,6 +717,398 @@ func (c *CPU) branch(cond bool) int {
 	return 3
 }
 
+// --- Unofficial opcode helpers ---
+
+// unofficialNOP handles undocumented NOP variants that read and discard a value.
+func (c *CPU) unofficialNOP(opcode uint8) int {
+	switch opcode {
+	// Implied NOPs (1 byte)
+	case 0x1A, 0x3A, 0x5A, 0x7A, 0xDA, 0xFA:
+		return 2
+
+	// NOP #imm (SKB) — read and discard immediate byte (2 bytes)
+	case 0x80:
+		_ = c.imm()
+		return 2
+
+	// NOP zp — read and discard zero-page (2 bytes)
+	case 0x04, 0x44, 0x64:
+		c.PC++            // consume operand
+		_ = c.Bus.Read(c.zp())
+		return 3
+
+	// NOP zp,X — read and discard zero-page,X (2 bytes)
+	case 0x14, 0x34, 0x54, 0x74, 0xD4, 0xF4:
+		c.PC++            // consume operand
+		_ = c.Bus.Read(c.zpX())
+		return 4
+
+	// NOP abs (TOP) — read and discard absolute (3 bytes)
+	case 0x0C:
+		_ = c.Bus.Read(c.abs())
+		return 4
+
+	// NOP abs,X — read and discard absolute,X (3 bytes), +1 cycle if page crossed
+	case 0x1C, 0x3C, 0x5C, 0x7C, 0xDC, 0xFC:
+		var cross bool
+		addr := c.absX(&cross)
+		_ = c.Bus.Read(addr)
+		if cross {
+			return 5
+		}
+		return 4
+	}
+	return 2
+}
+
+// slo: ASL memory then ORA accumulator with result.
+func (c *CPU) slo(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0x03: // (ind,X)
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0x07: // zp
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0x0F: // abs
+		addr = c.abs()
+		cycles = 6
+	case 0x13: // (ind),Y
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0x17: // zp,X
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0x1B: // abs,Y
+		addr = c.absY(nil)
+		cycles = 7
+	case 0x1F: // abs,X
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.asl(c.Bus.Read(addr))
+	c.Bus.Write(addr, val)
+	c.A |= val
+	c.setZN(c.A)
+	return cycles
+}
+
+// rla: ROL memory then AND accumulator with result.
+func (c *CPU) rla(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0x23:
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0x27:
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0x2F:
+		addr = c.abs()
+		cycles = 6
+	case 0x33:
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0x37:
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0x3B:
+		addr = c.absY(nil)
+		cycles = 7
+	case 0x3F:
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.rol(c.Bus.Read(addr))
+	c.Bus.Write(addr, val)
+	c.A &= val
+	c.setZN(c.A)
+	return cycles
+}
+
+// sre: LSR memory then EOR accumulator with result.
+func (c *CPU) sre(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0x43:
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0x47:
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0x4F:
+		addr = c.abs()
+		cycles = 6
+	case 0x53:
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0x57:
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0x5B:
+		addr = c.absY(nil)
+		cycles = 7
+	case 0x5F:
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.lsr(c.Bus.Read(addr))
+	c.Bus.Write(addr, val)
+	c.A ^= val
+	c.setZN(c.A)
+	return cycles
+}
+
+// rra: ROR memory then ADC accumulator with result.
+func (c *CPU) rra(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0x63:
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0x67:
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0x6F:
+		addr = c.abs()
+		cycles = 6
+	case 0x73:
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0x77:
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0x7B:
+		addr = c.absY(nil)
+		cycles = 7
+	case 0x7F:
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.ror(c.Bus.Read(addr))
+	c.Bus.Write(addr, val)
+	// ADC with the ROR result (carry already set by ror)
+	carry := uint16(0)
+	if c.P&FlagC != 0 {
+		carry = 1
+	}
+	sum := uint16(c.A) + uint16(val) + carry
+	c.P &^= (FlagC | FlagV)
+	if sum > 0xFF {
+		c.P |= FlagC
+	}
+	if ^(uint16(c.A)^uint16(val))&(uint16(c.A)^sum)&0x80 != 0 {
+		c.P |= FlagV
+	}
+	c.A = uint8(sum)
+	c.setZN(c.A)
+	return cycles
+}
+
+// sax: Store A & X to memory.
+func (c *CPU) sax(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0x83: // (ind,X)
+		c.PC++
+		addr = c.indX()
+		cycles = 6
+	case 0x87: // zp
+		c.PC++
+		addr = c.zp()
+		cycles = 3
+	case 0x8F: // abs
+		addr = c.abs()
+		cycles = 4
+	case 0x97: // zp,Y
+		c.PC++
+		addr = c.zpY()
+		cycles = 4
+	default:
+		return 2
+	}
+	c.Bus.Write(addr, c.A&c.X)
+	return cycles
+}
+
+// lax: Load both A and X from memory.
+func (c *CPU) lax(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0xA3: // (ind,X)
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0xA7: // zp
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0xAF: // abs
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0xB3: // (ind),Y
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	case 0xB7: // zp,Y
+		c.PC++
+		val = c.Bus.Read(c.zpY())
+		cycles = 4
+	case 0xBF: // abs,Y
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	default:
+		return 2
+	}
+	c.A = val
+	c.X = val
+	c.setZN(val)
+	return cycles
+}
+
+// dcp: DEC memory then CMP accumulator (CMP == compare A with memory).
+func (c *CPU) dcp(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0xC3: // (ind,X)
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0xC7: // zp
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0xCF: // abs
+		addr = c.abs()
+		cycles = 6
+	case 0xD3: // (ind),Y
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0xD7: // zp,X
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0xDB: // abs,Y
+		addr = c.absY(nil)
+		cycles = 7
+	case 0xDF: // abs,X
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.Bus.Read(addr) - 1
+	c.Bus.Write(addr, val)
+	c.P &^= (FlagC | FlagZ | FlagN)
+	if c.A >= val {
+		c.P |= FlagC
+	}
+	result := c.A - val
+	if result == 0 {
+		c.P |= FlagZ
+	}
+	c.P |= (result & FlagN)
+	return cycles
+}
+
+// isc: INC memory then SBC accumulator (SBC == A - mem - (1-C)).
+func (c *CPU) isc(opcode uint8) int {
+	var addr uint16
+	var cycles int
+	switch opcode {
+	case 0xE3: // (ind,X)
+		c.PC++
+		addr = c.indX()
+		cycles = 8
+	case 0xE7: // zp
+		c.PC++
+		addr = c.zp()
+		cycles = 5
+	case 0xEF: // abs
+		addr = c.abs()
+		cycles = 6
+	case 0xF3: // (ind),Y
+		c.PC++
+		addr = c.indY(nil)
+		cycles = 8
+	case 0xF7: // zp,X
+		c.PC++
+		addr = c.zpX()
+		cycles = 6
+	case 0xFB: // abs,Y
+		addr = c.absY(nil)
+		cycles = 7
+	case 0xFF: // abs,X
+		addr = c.absX(nil)
+		cycles = 7
+	default:
+		return 2
+	}
+	val := c.Bus.Read(addr) + 1
+	c.Bus.Write(addr, val)
+	// SBC: A = A - val - (1-C)
+	carry := uint16(0)
+	if c.P&FlagC != 0 {
+		carry = 1
+	}
+	diff := uint16(c.A) - uint16(val) - (1 - carry)
+	c.P &^= (FlagC | FlagV)
+	if diff <= 0xFF {
+		c.P |= FlagC
+	}
+	if (uint16(c.A)^uint16(val))&(uint16(c.A)^diff)&0x80 != 0 {
+		c.P |= FlagV
+	}
+	c.A = uint8(diff)
+	c.setZN(c.A)
+	return cycles
+}
+
 // --- Instruction dispatch ---
 
 func (c *CPU) execute(opcode uint8) int {
@@ -953,14 +1345,12 @@ func (c *CPU) execute(opcode uint8) int {
 		c.setZN(v)
 		return 6
 	case 0xEE: // INC abs
-		c.PC++
 		addr := c.abs()
 		v := c.Bus.Read(addr) + 1
 		c.Bus.Write(addr, v)
 		c.setZN(v)
 		return 6
 	case 0xFE: // INC abs,X
-		c.PC++
 		var _cross bool
 		addr := c.absX(&_cross)
 		v := c.Bus.Read(addr) + 1
@@ -982,14 +1372,12 @@ func (c *CPU) execute(opcode uint8) int {
 		c.setZN(v)
 		return 6
 	case 0xCE: // DEC abs
-		c.PC++
 		addr := c.abs()
 		v := c.Bus.Read(addr) - 1
 		c.Bus.Write(addr, v)
 		c.setZN(v)
 		return 6
 	case 0xDE: // DEC abs,X
-		c.PC++
 		var _cross bool
 		addr := c.absX(&_cross)
 		v := c.Bus.Read(addr) - 1
@@ -1012,6 +1400,9 @@ func (c *CPU) execute(opcode uint8) int {
 		return 2
 	case 0xD8: // CLD - Clear Decimal
 		c.P &^= FlagD
+		return 2
+	case 0xF8: // SED - Set Decimal
+		c.P |= FlagD
 		return 2
 	case 0xB8: // CLV - Clear Overflow
 		c.P &^= FlagV
@@ -1211,6 +1602,45 @@ func (c *CPU) execute(opcode uint8) int {
 		c.P = c.pop8()&0xEF | FlagU
 		c.PC = c.pop16()
 		return 6
+
+	// ===== Unofficial NOPs =====
+	case 0x04, 0x44, 0x64, 0x14, 0x34, 0x54, 0x74, 0xD4, 0xF4,
+		0x0C, 0x1C, 0x3C, 0x5C, 0x7C, 0xDC, 0xFC,
+		0x1A, 0x3A, 0x5A, 0x7A, 0xDA, 0xFA,
+		0x80:
+		return c.unofficialNOP(opcode)
+
+	// ===== SLO (ASL + ORA) =====
+	case 0x03, 0x07, 0x0F, 0x13, 0x17, 0x1B, 0x1F:
+		return c.slo(opcode)
+
+	// ===== RLA (ROL + AND) =====
+	case 0x23, 0x27, 0x2F, 0x33, 0x37, 0x3B, 0x3F:
+		return c.rla(opcode)
+
+	// ===== SRE (LSR + EOR) =====
+	case 0x43, 0x47, 0x4F, 0x53, 0x57, 0x5B, 0x5F:
+		return c.sre(opcode)
+
+	// ===== RRA (ROR + ADC) =====
+	case 0x63, 0x67, 0x6F, 0x73, 0x77, 0x7B, 0x7F:
+		return c.rra(opcode)
+
+	// ===== SAX (Store A & X) =====
+	case 0x83, 0x87, 0x8F, 0x97:
+		return c.sax(opcode)
+
+	// ===== LAX (Load A and X) =====
+	case 0xA3, 0xA7, 0xAF, 0xB3, 0xB7, 0xBF:
+		return c.lax(opcode)
+
+	// ===== DCP (DEC + CMP) =====
+	case 0xC3, 0xC7, 0xCF, 0xD3, 0xD7, 0xDB, 0xDF:
+		return c.dcp(opcode)
+
+	// ===== ISC (INC + SBC) =====
+	case 0xE3, 0xE7, 0xEF, 0xF3, 0xF7, 0xFB, 0xFF:
+		return c.isc(opcode)
 
 	default:
 		return 2

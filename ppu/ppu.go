@@ -3,6 +3,7 @@ package ppu
 type CartridgeInterface interface {
 	CHRRead(addr uint16) uint8
 	CHRWrite(addr uint16, data uint8)
+	MirrorMode() uint8
 }
 
 var NESPalette = [64]uint32{
@@ -34,24 +35,29 @@ type PPU struct {
 	V          uint16
 	T          uint16
 	FineX      uint8
-	W          bool
-	scrollLatch bool
+	Latch      bool   // shared toggle for $2005/$2006
+	mirrorMode uint8  // cartridge-determined nametable mirroring
 
 	VRAM    [2048]uint8
 	OAM     [256]uint8
 	Palette [32]uint8
 
-	Frame     [ScreenWidth * ScreenHeight * 4]uint8
+	Frame      [ScreenWidth * ScreenHeight * 4]uint8
+	tileBuffer [ScreenWidth * ScreenHeight]uint8
 	readBuffer uint8
 
 	Scanline          int
 	Cycle             int
 	NMI               bool
-	VblankReasserts   int // re-assert VBlank N times to support multi-poll init
+	VblankReasserts   int    // re-assert VBlank N times to support multi-poll init
+	PalWrites         uint64 // diagnostic: counts palette writes
 }
 
 func New(cart CartridgeInterface) *PPU {
-	return &PPU{Cart: cart}
+	return &PPU{
+		Cart:       cart,
+		mirrorMode: cart.MirrorMode(),
+	}
 }
 
 func (p *PPU) ReadRegister(addr uint16) uint8 {
@@ -59,13 +65,12 @@ func (p *PPU) ReadRegister(addr uint16) uint8 {
 	case 0x2002:
 		result := p.Status
 		p.Status &^= 0x80
-		p.W = false
-			// Re-assert VBlank to support multiple VBlank poll loops
-			if p.VblankReasserts > 0 {
-				p.Status |= 0x80
-				p.VblankReasserts--
-			}
-		p.scrollLatch = false
+		p.Latch = false
+		// Re-assert VBlank to support multiple VBlank poll loops
+		if p.VblankReasserts > 0 {
+			p.Status |= 0x80
+			p.VblankReasserts--
+		}
 		return result
 	case 0x2007:
 		return p.readData()
@@ -87,7 +92,7 @@ func (p *PPU) WriteRegister(addr uint16, data uint8) {
 		p.OAM[p.OAMAddr] = data
 		p.OAMAddr++
 	case 0x2005:
-		if !p.scrollLatch {
+		if !p.Latch {
 			p.ScrollX = data
 			p.FineX = data & 0x07
 			p.T = (p.T & 0xFFE0) | (uint16(data) >> 3)
@@ -95,15 +100,15 @@ func (p *PPU) WriteRegister(addr uint16, data uint8) {
 			p.ScrollY = data
 			p.T = (p.T & 0x8C1F) | ((uint16(data) & 0x07) << 12) | ((uint16(data) & 0xF8) << 2)
 		}
-		p.scrollLatch = !p.scrollLatch
+		p.Latch = !p.Latch
 	case 0x2006:
-		if !p.W {
+		if !p.Latch {
 			p.T = (p.T & 0x00FF) | ((uint16(data) & 0x3F) << 8)
 		} else {
 			p.T = (p.T & 0xFF00) | uint16(data)
 			p.V = p.T
 		}
-		p.W = !p.W
+		p.Latch = !p.Latch
 	case 0x2007:
 		p.writeData(data)
 	}
@@ -140,6 +145,7 @@ func (p *PPU) writeData(data uint8) {
 	default:
 		idx := p.paletteIndex(addr)
 		p.Palette[idx] = data
+		p.PalWrites++
 	}
 }
 
@@ -183,10 +189,13 @@ func (p *PPU) readCHR(addr uint16) uint8 {
 }
 
 func (p *PPU) mirrorNameTable(addr uint16) uint16 {
-	addr = addr & 0x2FFF
+	addr &= 0x3FFF
+	if addr >= 0x3000 && addr < 0x3F00 {
+		addr -= 0x1000 // $3000-$3EFF mirrors $2000-$2EFF
+	}
 	table := (addr - 0x2000) / 0x400
 	switch {
-	case p.Ctrl&0x01 != 0: // Vertical mirroring
+	case p.mirrorMode != 0: // Vertical mirroring (cartridge-determined)
 		switch table {
 		case 0, 1:
 			return addr
@@ -213,6 +222,9 @@ func (p *PPU) mirrorNameTable(addr uint16) uint16 {
 func (p *PPU) RenderFrame() []byte {
 	for i := range p.Frame {
 		p.Frame[i] = 0
+	}
+	for i := range p.tileBuffer {
+		p.tileBuffer[i] = 0
 	}
 	p.Status |= 0x80 // Set VBlank
 
@@ -268,6 +280,9 @@ func (p *PPU) renderBackground() {
 			bit := 7 - pixelX
 			colorIdx := ((hi>>bit)&1)<<1 | ((lo>>bit)&1)
 
+			// Store raw color index for sprite priority checks
+			p.tileBuffer[y*256+x] = colorIdx
+
 			if colorIdx == 0 {
 				colorIdx = p.Palette[0] & 0x3F
 			} else {
@@ -297,9 +312,13 @@ func (p *PPU) renderSprites() {
 		attr := p.OAM[i*4+2]
 		spriteX := int(p.OAM[i*4+3])
 
+		// Y=0 sprites are hidden on real NES hardware
+		if p.OAM[i*4] == 0 {
+			continue
+		}
 		spriteY = spriteY + 1 // NES: sprites rendered one line lower
 
-		if spriteY > 240 || spriteX > 248 {
+		if spriteY >= 240 || spriteX > 248 {
 			continue
 		}
 
@@ -360,7 +379,7 @@ func (p *PPU) renderSprites() {
 				offset := (drawY*256 + drawX) * 4
 
 				// Sprite priority: bit 5 set = render behind non-transparent background
-				if attr&0x20 != 0 && (p.Frame[offset]|p.Frame[offset+1]|p.Frame[offset+2]|p.Frame[offset+3]) != 0 {
+				if attr&0x20 != 0 && p.tileBuffer[drawY*256+drawX] != 0 {
 					continue
 				}
 

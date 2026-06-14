@@ -91,6 +91,10 @@ func (c *Cartridge) CHRRead(addr uint16) uint8 {
 	return c.CHR[addr]
 }
 
+func (c *Cartridge) MirrorMode() uint8 {
+	return uint8(c.Mirror)
+}
+
 func (c *Cartridge) CHRWrite(addr uint16, data uint8) {
 	if c.CHRBanks == 0 {
 		if int(addr) < len(c.CHR) {

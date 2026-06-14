@@ -10,6 +10,7 @@ type mockCart struct {
 
 func (m *mockCart) CHRRead(addr uint16) uint8   { return m.chr[addr] }
 func (m *mockCart) CHRWrite(addr uint16, v uint8) { m.chr[addr] = v }
+func (m *mockCart) MirrorMode() uint8            { return 0 }
 
 func newPPU() *PPU {
 	cart := &mockCart{chr: make([]byte, 8192)}
@@ -44,16 +45,12 @@ func TestPPUSTATUSReadClearsVBlank(t *testing.T) {
 	}
 }
 
-func TestPPUSTATUSClearsWLatch(t *testing.T) {
+func TestPPUSTATUSClearsLatch(t *testing.T) {
 	ppu := newPPU()
-	ppu.W = true
-	ppu.scrollLatch = true
+	ppu.Latch = true
 	ppu.ReadRegister(0x2002)
-	if ppu.W {
-		t.Error("PPUSTATUS read should clear W latch")
-	}
-	if ppu.scrollLatch {
-		t.Error("PPUSTATUS read should clear scroll latch")
+	if ppu.Latch {
+		t.Error("PPUSTATUS read should clear latch")
 	}
 }
 
@@ -126,6 +123,44 @@ func TestOAMWrite(t *testing.T) {
 	}
 	if ppu.OAMAddr != 1 {
 		t.Errorf("OAMAddr should auto-increment to 1, got %d", ppu.OAMAddr)
+	}
+}
+
+func TestSharedLatchBehavior(t *testing.T) {
+	ppu := newPPU()
+
+	// Write $2005 (first write) → Latch should become true
+	ppu.WriteRegister(0x2005, 0x42)
+	if !ppu.Latch {
+		t.Error("after first $2005 write, Latch should be true")
+	}
+
+	// Write $2006 → should be second write (Latch was true from $2005)
+	// This writes the LOW byte and copies T to V
+	ppu.WriteRegister(0x2006, 0x45)
+	if ppu.Latch {
+		t.Error("after $2006 write, Latch should toggle to false")
+	}
+	// T should have been set to 0x0045 (low byte only, high byte is 0 since we never wrote it)
+	// V should equal T after low byte write
+	if ppu.V != ppu.T {
+		t.Errorf("after $2006 low byte, V (0x%04X) should equal T (0x%04X)", ppu.V, ppu.T)
+	}
+
+	// Read $2002 → Latch should be reset
+	ppu.ReadRegister(0x2002)
+	if ppu.Latch {
+		t.Error("after $2002 read, Latch should be false")
+	}
+
+	// Now write $2006 → should be first write again (high byte)
+	ppu.WriteRegister(0x2006, 0x23)
+	if !ppu.Latch {
+		t.Error("after first $2006 write (post-reset), Latch should be true")
+	}
+	ppu.WriteRegister(0x2006, 0x45) // second write: low byte, copy T to V
+	if ppu.V != 0x2345 {
+		t.Errorf("V expected 0x2345 after full $2006 sequence, got 0x%04X", ppu.V)
 	}
 }
 
