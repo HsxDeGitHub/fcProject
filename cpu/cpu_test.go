@@ -659,3 +659,289 @@ func TestZpXWrap(t *testing.T) {
 		t.Errorf("LDA $FF,X wrap: A expected 0x42, got 0x%02X", cpu.A)
 	}
 }
+
+func TestADCImmediate(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x10
+	bus.ram[0x8000] = 0x69 // ADC #$20
+	bus.ram[0x8001] = 0x20
+	cpu.Step()
+	if cpu.A != 0x30 {
+		t.Errorf("ADC immediate: expected 0x30, got 0x%02X", cpu.A)
+	}
+}
+
+func TestADCWithCarry(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0xF0
+	cpu.P |= FlagC
+	bus.ram[0x8000] = 0x69
+	bus.ram[0x8001] = 0x20
+	cpu.Step()
+	if cpu.A != 0x11 {
+		t.Errorf("ADC with carry: expected 0x11, got 0x%02X", cpu.A)
+	}
+	if cpu.P&FlagC == 0 {
+		t.Error("ADC: C flag should be set on overflow")
+	}
+}
+
+func TestANDImmediate(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0xF0
+	bus.ram[0x8000] = 0x29 // AND #$0F
+	bus.ram[0x8001] = 0x0F
+	cpu.Step()
+	if cpu.A != 0x00 {
+		t.Errorf("AND: expected 0x00, got 0x%02X", cpu.A)
+	}
+	if cpu.P&FlagZ == 0 {
+		t.Error("AND: Z flag should be set when result is 0")
+	}
+}
+
+func TestORAImmediate(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x0F
+	bus.ram[0x8000] = 0x09 // ORA #$F0
+	bus.ram[0x8001] = 0xF0
+	cpu.Step()
+	if cpu.A != 0xFF {
+		t.Errorf("ORA: expected 0xFF, got 0x%02X", cpu.A)
+	}
+}
+
+func TestEORImmediate(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0xF0
+	bus.ram[0x8000] = 0x49 // EOR #$0F
+	bus.ram[0x8001] = 0x0F
+	cpu.Step()
+	if cpu.A != 0xFF {
+		t.Errorf("EOR: expected 0xFF, got 0x%02X", cpu.A)
+	}
+}
+
+func TestCMPEqual(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x42
+	bus.ram[0x8000] = 0xC9 // CMP #$42
+	bus.ram[0x8001] = 0x42
+	cpu.Step()
+	if cpu.P&FlagZ == 0 {
+		t.Error("CMP: Z flag should be set when equal")
+	}
+	if cpu.P&FlagC == 0 {
+		t.Error("CMP: C flag should be set when A >= M")
+	}
+}
+
+func TestCMPLessThan(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x10
+	bus.ram[0x8000] = 0xC9
+	bus.ram[0x8001] = 0x42
+	cpu.Step()
+	if cpu.P&FlagC != 0 {
+		t.Error("CMP: C flag should be clear when A < M")
+	}
+}
+
+func TestCPXEqual(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.X = 0x42
+	bus.ram[0x8000] = 0xE0
+	bus.ram[0x8001] = 0x42
+	cpu.Step()
+	if cpu.P&FlagZ == 0 {
+		t.Error("CPX: Z flag should be set when equal")
+	}
+}
+
+func TestCPYEqual(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.Y = 0x42
+	bus.ram[0x8000] = 0xC0
+	bus.ram[0x8001] = 0x42
+	cpu.Step()
+	if cpu.P&FlagZ == 0 {
+		t.Error("CPY: Z flag should be set when equal")
+	}
+}
+
+func TestASLAccumulator(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x81 // 1000_0001, bit 7 set
+	bus.ram[0x8000] = 0x0A
+	cpu.Step()
+	if cpu.A != 0x02 {
+		t.Errorf("ASL A: expected 0x02, got 0x%02X", cpu.A)
+	}
+	if cpu.P&FlagC == 0 {
+		t.Error("ASL A: C flag should be set for 0x81 << 1")
+	}
+}
+
+func TestLSRAccumulator(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x82
+	bus.ram[0x8000] = 0x4A
+	cpu.Step()
+	if cpu.A != 0x41 {
+		t.Errorf("LSR A: expected 0x41, got 0x%02X", cpu.A)
+	}
+}
+
+func TestROLA(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x80
+	cpu.P |= FlagC
+	bus.ram[0x8000] = 0x2A
+	cpu.Step()
+	if cpu.A != 0x01 {
+		t.Errorf("ROL A: expected 0x01, got 0x%02X", cpu.A)
+	}
+	if cpu.P&FlagC == 0 {
+		t.Error("ROL A: C flag should be set")
+	}
+}
+
+func TestRORA(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x01
+	cpu.P |= FlagC
+	bus.ram[0x8000] = 0x6A
+	cpu.Step()
+	if cpu.A != 0x80 {
+		t.Errorf("ROR A: expected 0x80, got 0x%02X", cpu.A)
+	}
+}
+
+func TestBEQBranchTaken(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.P |= FlagZ
+	bus.ram[0x8000] = 0xF0
+	bus.ram[0x8001] = 0x05
+	cpu.Step()
+	if cpu.PC != 0x8007 {
+		t.Errorf("BEQ taken: expected PC=0x8007, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestBEQNoBranch(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.P &^= FlagZ
+	bus.ram[0x8000] = 0xF0
+	bus.ram[0x8001] = 0x05
+	cpu.Step()
+	if cpu.PC != 0x8002 {
+		t.Errorf("BEQ not taken: expected PC=0x8002, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestBNEBranchTaken(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.P &^= FlagZ
+	bus.ram[0x8000] = 0xD0
+	bus.ram[0x8001] = 0x05
+	cpu.Step()
+	if cpu.PC != 0x8007 {
+		t.Errorf("BNE taken: expected PC=0x8007, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestJMPAbsolute(t *testing.T) {
+	cpu, bus := newCPU()
+	bus.ram[0x8000] = 0x4C
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x90
+	cpu.Step()
+	if cpu.PC != 0x9000 {
+		t.Errorf("JMP absolute: expected PC=0x9000, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestJSRAndRTS(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.SP = 0xFF
+	bus.ram[0x8000] = 0x20 // JSR $9000
+	bus.ram[0x8001] = 0x00
+	bus.ram[0x8002] = 0x90
+	bus.ram[0x9000] = 0x60 // RTS
+	cpu.Step() // JSR
+	if cpu.PC != 0x9000 {
+		t.Errorf("JSR: expected PC=0x9000, got 0x%04X", cpu.PC)
+	}
+	cpu.Step() // RTS
+	if cpu.PC != 0x8003 {
+		t.Errorf("RTS: expected PC=0x8003, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestBITZeroPage(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0xF0
+	bus.ram[0x0000] = 0x0F
+	bus.ram[0x8000] = 0x24 // BIT $00
+	bus.ram[0x8001] = 0x00
+	cpu.Step()
+	if cpu.P&FlagZ == 0 {
+		t.Error("BIT: Z flag should be set when A & M == 0")
+	}
+}
+
+func TestBRK(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.SP = 0xFF
+	bus.ram[0x8000] = 0x00
+	bus.ram[0xFFFE] = 0x00
+	bus.ram[0xFFFF] = 0x90
+	cpu.Step()
+	if cpu.PC != 0x9000 {
+		t.Errorf("BRK: expected PC=0x9000, got 0x%04X", cpu.PC)
+	}
+	if cpu.P&FlagI == 0 {
+		t.Error("BRK: I flag should be set")
+	}
+}
+
+func TestRTI(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.SP = 0xFD
+	cpu.push16(0x8003)
+	cpu.push8(0x35)
+	bus.ram[0x8000] = 0x40
+	cpu.Step()
+	if cpu.PC != 0x8003 {
+		t.Errorf("RTI: expected PC=0x8003, got 0x%04X", cpu.PC)
+	}
+}
+
+func TestBranchPageCross(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.PC = 0x80FD
+	cpu.P &^= FlagZ // BNE will branch
+	bus.ram[0x80FD] = 0xD0 // BNE +5
+	bus.ram[0x80FE] = 0x05
+	cycles := cpu.Step()
+	// PC after Step(): opcode at 0x80FD, PC=0x80FE; branch reads offset at 0x80FE, PC=0x80FF
+	// target = 0x80FF + 5 = 0x8104 (crosses from page 0x80 to 0x81)
+	if cpu.PC != 0x8104 {
+		t.Errorf("branch page cross: expected PC=0x8104, got 0x%04X", cpu.PC)
+	}
+	if cycles != 4 {
+		t.Errorf("branch page cross: expected 4 cycles, got %d", cycles)
+	}
+}
+
+func TestSBCBasic(t *testing.T) {
+	cpu, bus := newCPU()
+	cpu.A = 0x50
+	cpu.P |= FlagC // C=1
+	bus.ram[0x8000] = 0xE9 // SBC #$20
+	bus.ram[0x8001] = 0x20
+	cpu.Step()
+	if cpu.A != 0x30 {
+		t.Errorf("SBC: expected 0x30, got 0x%02X", cpu.A)
+	}
+}

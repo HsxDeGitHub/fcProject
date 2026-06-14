@@ -217,6 +217,506 @@ func (c *CPU) pop16() uint16 {
 	return uint16(lo) | uint16(hi)<<8
 }
 
+// --- Arithmetic and Logical helpers ---
+
+func (c *CPU) adc(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0x69:
+		val = c.imm()
+		cycles = 2
+	case 0x65:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0x75:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0x6D:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0x7D:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x79:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x61:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0x71:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	default:
+		return 2
+	}
+	carry := uint16(0)
+	if c.P&FlagC != 0 {
+		carry = 1
+	}
+	sum := uint16(c.A) + uint16(val) + carry
+	c.P &^= (FlagC | FlagV)
+	if sum > 0xFF {
+		c.P |= FlagC
+	}
+	if ^(uint16(c.A)^uint16(val))&(uint16(c.A)^sum)&0x80 != 0 {
+		c.P |= FlagV
+	}
+	c.A = uint8(sum)
+	c.setZN(c.A)
+	return cycles
+}
+
+func (c *CPU) sbc(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0xE9, 0xEB:
+		val = c.imm()
+		cycles = 2
+	case 0xE5:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0xF5:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0xED:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0xFD:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0xF9:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0xE1:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0xF1:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	default:
+		return 2
+	}
+	carry := uint16(0)
+	if c.P&FlagC != 0 {
+		carry = 1
+	}
+	diff := uint16(c.A) - uint16(val) - (1 - carry)
+	c.P &^= (FlagC | FlagV)
+	if diff <= 0xFF {
+		c.P |= FlagC
+	}
+	if (uint16(c.A)^uint16(val))&(uint16(c.A)^diff)&0x80 != 0 {
+		c.P |= FlagV
+	}
+	c.A = uint8(diff)
+	c.setZN(c.A)
+	return cycles
+}
+
+func (c *CPU) and(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0x29:
+		val = c.imm()
+		cycles = 2
+	case 0x25:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0x35:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0x2D:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0x3D:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x39:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x21:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0x31:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	}
+	c.A &= val
+	c.setZN(c.A)
+	return cycles
+}
+
+func (c *CPU) ora(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0x09:
+		val = c.imm()
+		cycles = 2
+	case 0x05:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0x15:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0x0D:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0x1D:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x19:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x01:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0x11:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	}
+	c.A |= val
+	c.setZN(c.A)
+	return cycles
+}
+
+func (c *CPU) eor(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0x49:
+		val = c.imm()
+		cycles = 2
+	case 0x45:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0x55:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0x4D:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0x5D:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x59:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0x41:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0x51:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	}
+	c.A ^= val
+	c.setZN(c.A)
+	return cycles
+}
+
+func (c *CPU) cmp(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0xC9:
+		val = c.imm()
+		cycles = 2
+	case 0xC5:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0xD5:
+		c.PC++
+		val = c.Bus.Read(c.zpX())
+		cycles = 4
+	case 0xCD:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	case 0xDD:
+		var cross bool
+		addr := c.absX(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0xD9:
+		var cross bool
+		addr := c.absY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 5
+		} else {
+			cycles = 4
+		}
+	case 0xC1:
+		c.PC++
+		val = c.Bus.Read(c.indX())
+		cycles = 6
+	case 0xD1:
+		c.PC++
+		var cross bool
+		addr := c.indY(&cross)
+		val = c.Bus.Read(addr)
+		if cross {
+			cycles = 6
+		} else {
+			cycles = 5
+		}
+	}
+	c.P &^= (FlagC | FlagZ | FlagN)
+	if c.A >= val {
+		c.P |= FlagC
+	}
+	result := c.A - val
+	if result == 0 {
+		c.P |= FlagZ
+	}
+	c.P |= (result & FlagN)
+	return cycles
+}
+
+func (c *CPU) cpx(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0xE0:
+		val = c.imm()
+		cycles = 2
+	case 0xE4:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0xEC:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	}
+	c.P &^= (FlagC | FlagZ | FlagN)
+	if c.X >= val {
+		c.P |= FlagC
+	}
+	result := c.X - val
+	if result == 0 {
+		c.P |= FlagZ
+	}
+	c.P |= (result & FlagN)
+	return cycles
+}
+
+func (c *CPU) cpy(opcode uint8) int {
+	var val uint8
+	var cycles int
+	switch opcode {
+	case 0xC0:
+		val = c.imm()
+		cycles = 2
+	case 0xC4:
+		c.PC++
+		val = c.Bus.Read(c.zp())
+		cycles = 3
+	case 0xCC:
+		val = c.Bus.Read(c.abs())
+		cycles = 4
+	}
+	c.P &^= (FlagC | FlagZ | FlagN)
+	if c.Y >= val {
+		c.P |= FlagC
+	}
+	result := c.Y - val
+	if result == 0 {
+		c.P |= FlagZ
+	}
+	c.P |= (result & FlagN)
+	return cycles
+}
+
+// --- Shift / Rotate helpers ---
+
+func (c *CPU) asl(val uint8) uint8 {
+	c.P &^= FlagC
+	if val&0x80 != 0 {
+		c.P |= FlagC
+	}
+	val <<= 1
+	c.setZN(val)
+	return val
+}
+
+func (c *CPU) lsr(val uint8) uint8 {
+	c.P &^= FlagC
+	if val&1 != 0 {
+		c.P |= FlagC
+	}
+	val >>= 1
+	c.setZN(val)
+	return val
+}
+
+func (c *CPU) rol(val uint8) uint8 {
+	oldC := c.P & FlagC
+	c.P &^= FlagC
+	if val&0x80 != 0 {
+		c.P |= FlagC
+	}
+	val = (val << 1) | oldC
+	c.setZN(val)
+	return val
+}
+
+func (c *CPU) ror(val uint8) uint8 {
+	oldC := c.P & FlagC
+	c.P &^= FlagC
+	if val&1 != 0 {
+		c.P |= FlagC
+	}
+	val = (val >> 1) | (oldC << 7)
+	c.setZN(val)
+	return val
+}
+
+func (c *CPU) aslMem(addr uint16) { c.Bus.Write(addr, c.asl(c.Bus.Read(addr))) }
+func (c *CPU) lsrMem(addr uint16) { c.Bus.Write(addr, c.lsr(c.Bus.Read(addr))) }
+func (c *CPU) rolMem(addr uint16) { c.Bus.Write(addr, c.rol(c.Bus.Read(addr))) }
+func (c *CPU) rorMem(addr uint16) { c.Bus.Write(addr, c.ror(c.Bus.Read(addr))) }
+
+func (c *CPU) bit(v uint8) {
+	c.P &^= (FlagZ | FlagN | FlagV)
+	if c.A&v == 0 {
+		c.P |= FlagZ
+	}
+	c.P |= (v & (FlagN | FlagV))
+}
+
+// --- Branch helper ---
+
+func (c *CPU) branch(cond bool) int {
+	offset := int8(c.Bus.Read(c.PC))
+	c.PC++
+	if !cond {
+		return 2
+	}
+	oldPC := c.PC
+	c.PC = uint16(int32(c.PC) + int32(offset))
+	if oldPC&0xFF00 != c.PC&0xFF00 {
+		return 4
+	}
+	return 3
+}
+
 // --- Instruction dispatch ---
 
 func (c *CPU) execute(opcode uint8) int {
@@ -496,6 +996,177 @@ func (c *CPU) execute(opcode uint8) int {
 	// ===== NOP =====
 	case 0xEA: // NOP
 		return 2
+
+	// ===== ADC =====
+	case 0x69, 0x65, 0x75, 0x6D, 0x7D, 0x79, 0x61, 0x71:
+		return c.adc(opcode)
+
+	// ===== SBC =====
+	case 0xE9, 0xEB, 0xE5, 0xF5, 0xED, 0xFD, 0xF9, 0xE1, 0xF1:
+		return c.sbc(opcode)
+
+	// ===== AND =====
+	case 0x29, 0x25, 0x35, 0x2D, 0x3D, 0x39, 0x21, 0x31:
+		return c.and(opcode)
+
+	// ===== ORA =====
+	case 0x09, 0x05, 0x15, 0x0D, 0x1D, 0x19, 0x01, 0x11:
+		return c.ora(opcode)
+
+	// ===== EOR =====
+	case 0x49, 0x45, 0x55, 0x4D, 0x5D, 0x59, 0x41, 0x51:
+		return c.eor(opcode)
+
+	// ===== CMP =====
+	case 0xC9, 0xC5, 0xD5, 0xCD, 0xDD, 0xD9, 0xC1, 0xD1:
+		return c.cmp(opcode)
+
+	// ===== CPX =====
+	case 0xE0, 0xE4, 0xEC:
+		return c.cpx(opcode)
+
+	// ===== CPY =====
+	case 0xC0, 0xC4, 0xCC:
+		return c.cpy(opcode)
+
+	// ===== ASL =====
+	case 0x0A:
+		c.A = c.asl(c.A)
+		return 2
+	case 0x06:
+		c.PC++
+		c.aslMem(c.zp())
+		return 5
+	case 0x16:
+		c.PC++
+		c.aslMem(c.zpX())
+		return 6
+	case 0x0E:
+		c.aslMem(c.abs())
+		return 6
+	case 0x1E:
+		var _cross bool
+		c.aslMem(c.absX(&_cross))
+		return 7
+
+	// ===== LSR =====
+	case 0x4A:
+		c.A = c.lsr(c.A)
+		return 2
+	case 0x46:
+		c.PC++
+		c.lsrMem(c.zp())
+		return 5
+	case 0x56:
+		c.PC++
+		c.lsrMem(c.zpX())
+		return 6
+	case 0x4E:
+		c.lsrMem(c.abs())
+		return 6
+	case 0x5E:
+		var _cross bool
+		c.lsrMem(c.absX(&_cross))
+		return 7
+
+	// ===== ROL =====
+	case 0x2A:
+		c.A = c.rol(c.A)
+		return 2
+	case 0x26:
+		c.PC++
+		c.rolMem(c.zp())
+		return 5
+	case 0x36:
+		c.PC++
+		c.rolMem(c.zpX())
+		return 6
+	case 0x2E:
+		c.rolMem(c.abs())
+		return 6
+	case 0x3E:
+		var _cross bool
+		c.rolMem(c.absX(&_cross))
+		return 7
+
+	// ===== ROR =====
+	case 0x6A:
+		c.A = c.ror(c.A)
+		return 2
+	case 0x66:
+		c.PC++
+		c.rorMem(c.zp())
+		return 5
+	case 0x76:
+		c.PC++
+		c.rorMem(c.zpX())
+		return 6
+	case 0x6E:
+		c.rorMem(c.abs())
+		return 6
+	case 0x7E:
+		var _cross bool
+		c.rorMem(c.absX(&_cross))
+		return 7
+
+	// ===== Branches =====
+	case 0x90: // BCC
+		return c.branch(c.P&FlagC == 0)
+	case 0xB0: // BCS
+		return c.branch(c.P&FlagC != 0)
+	case 0xF0: // BEQ
+		return c.branch(c.P&FlagZ != 0)
+	case 0xD0: // BNE
+		return c.branch(c.P&FlagZ == 0)
+	case 0x30: // BMI
+		return c.branch(c.P&FlagN != 0)
+	case 0x10: // BPL
+		return c.branch(c.P&FlagN == 0)
+	case 0x50: // BVC
+		return c.branch(c.P&FlagV == 0)
+	case 0x70: // BVS
+		return c.branch(c.P&FlagV != 0)
+
+	// ===== BIT =====
+	case 0x24:
+		c.PC++
+		c.bit(c.Bus.Read(c.zp()))
+		return 3
+	case 0x2C:
+		c.bit(c.Bus.Read(c.abs()))
+		return 4
+
+	// ===== JMP absolute =====
+	case 0x4C:
+		c.PC = c.abs()
+		return 3
+
+	// ===== JSR =====
+	case 0x20:
+		addr := c.abs()
+		c.push16(c.PC - 1)
+		c.PC = addr
+		return 6
+
+	// ===== RTS =====
+	case 0x60:
+		c.PC = c.pop16() + 1
+		return 6
+
+	// ===== BRK =====
+	case 0x00:
+		c.PC++
+		c.push16(c.PC)
+		c.push8(c.P | FlagB | FlagU)
+		c.P |= FlagI
+		c.PC = uint16(c.Bus.Read(0xFFFE)) | uint16(c.Bus.Read(0xFFFF))<<8
+		return 7
+
+	// ===== RTI =====
+	case 0x40:
+		c.P = c.pop8()&0xEF | FlagU
+		c.PC = c.pop16()
+		return 6
 
 	default:
 		return 2
