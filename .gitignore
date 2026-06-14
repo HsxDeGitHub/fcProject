@@ -1,0 +1,27 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+fcProject
+nes-emulator
+
+# Test binary
+*.test
+
+# Go
+*.out
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ROMs (keep structure, ignore actual ROMs)
+rom/*.nes
+
+# OS
+.DS_Store
