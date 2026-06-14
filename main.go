@@ -48,22 +48,26 @@ func loadChineseFont() font.Face {
 		}
 		// Try as TTC first, then as single font
 		var tt *opentype.Font
-		col, err := opentype.ParseCollection(data)
-		if err == nil && col.NumFonts() > 0 {
-			tt, _ = col.Font(0) // Use first font in collection
+		col, cerr := opentype.ParseCollection(data)
+		if cerr == nil && col.NumFonts() > 0 {
+			tt, cerr = col.Font(0)
+			if cerr != nil {
+				continue
+			}
 		} else {
 			tt, err = opentype.Parse(data)
 			if err != nil {
 				continue
 			}
 		}
-		face, err := opentype.NewFace(tt, &opentype.FaceOptions{
-			Size: 14, DPI: 72, Hinting: font.HintingFull,
-		})
-		if err != nil {
-			continue
+		if tt != nil {
+			face, err := opentype.NewFace(tt, &opentype.FaceOptions{
+				Size: 14, DPI: 72, Hinting: font.HintingFull,
+			})
+			if err == nil && face != nil {
+				return face
+			}
 		}
-		return face
 	}
 	return nil
 }
