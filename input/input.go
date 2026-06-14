@@ -51,3 +51,11 @@ func (c *Controller) SimulateKey(button int, pressed bool) {
 		c.buttons[button] = pressed
 	}
 }
+
+// DebugButton returns the current button state (for testing).
+func (c *Controller) DebugButton(button int) bool {
+	if button >= 0 && button < 8 {
+		return c.buttons[button]
+	}
+	return false
+}
